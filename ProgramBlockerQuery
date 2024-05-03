@@ -1,0 +1,70 @@
+/* * * * *  
+            Esta função verifica se há processos que estejam causando travamentos no banco de dados, 
+            exibindo os comandos relacionados e identificando o comando responsável pelo 
+			      travamento primário (causa raiz do problema de travamento)
+* * * * */ 
+SELECT distinct T.* FROM (
+
+		SELECT   
+		spid as SPID,
+		dbo.obmiliseg(waittime) as WAITTIME, STATUS, 		
+		dbo.OBSQL_comand(spid) as COMAND,
+		CPU,
+		LOGINAME,
+		program_name as PROGRAM, hostname AS HOSTNAME,
+		blocked as [BLOCKER], 
+		(select top 1 hostname from sys.sysprocesses s WHERE s.spid= ss.blocked order by s.waittime desc ) as HOST_BLOCKER, 
+		(select top 1 program_name from sys.sysprocesses s WHERE s.spid= ss.blocked order by s.waittime desc ) as PROGRAM_BLOCKER, 
+		(select top 1 cpu from sys.sysprocesses s WHERE s.spid= ss.blocked order by s.waittime desc ) as CPU_BLOCK, 
+		(select top 1 loginame from sys.sysprocesses s WHERE s.spid= ss.blocked order by s.waittime desc ) as LOGIN_NAME, 
+		dbo.OBSQL_comand(blocked) as COMAND_BLOCKER 
+		FROM sys.sysprocesses  ss
+		WHERE dbo.obmiliseg(waittime) > '0000:00:10'   
+		and CPU > 500 
+		) t	
+		order by  BLOCKER desc, CPU desc  
+
+
+/* * * * */
+CREATE function obMiliseg(@milli bigint) returns varchar(10) as  
+begin  
+ declare @horaret varchar(10)  
+ select @horaret = right('0000' + cast(@milli/3600000 as varchar(4)),4)   
+   + ':'+ right('00'+ cast((@milli - ((@milli/3600000)*3600000))/60000 as varchar(2)),2)   
+   +':'+ right('00' + cast((@milli - (((@milli)/60000)*60000)) /1000 as varchar(2)),2)   
+ return @horaret   
+end   
+
+
+/* * * * */
+CREATE FUNCTION dbo.OBSQL_comand(@spid AS INT)      
+RETURNS VARCHAR(8000)        
+AS        
+BEGIN    
+  /* Autor: André Ximenes  
+     OBSQL_comand Mostra a descrição do comando do processo no sql atravéz so SPID */   
+    
+ IF @spid IS NOT NULL      
+ BEGIN    
+  DECLARE @handle varbinary(64)    
+  DECLARE @comandoSQL VARCHAR(8000)    
+    
+  SELECT @handle = CONVERT ( varbinary(64), ISNULL((SELECT top 1 sql_handle FROM sys.sysprocesses where spid = @spid), convert(varbinary(64), 0x0000000000000000000000000000000000000000 ,1 )), 1)      
+      
+  IF @handle <> CONVERT ( varbinary(64), 0x0000000000000000000000000000000000000000, 1)    
+  BEGIN    
+   SELECT @comandoSQL = (SELECT distinct CAST([TEXT] AS VARCHAR(8000)) FROM ::fn_get_sql(@handle))    
+  END    
+  ELSE    
+  BEGIN    
+   SET @comandoSQL = ' '    
+  END      
+ END    
+ ELSE    
+ BEGIN    
+  SET @comandoSQL = ' '    
+ END    
+ RETURN @comandoSQL    
+    
+END
+
