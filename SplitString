@@ -1,0 +1,21 @@
+/**  função personalizada em SQL Server (TSQL) para dividir a string em palavras. **/
+
+CREATE FUNCTION dbo.SplitString
+(
+    @string NVARCHAR(MAX),
+    @delimiter CHAR(1)
+)
+RETURNS @result TABLE (Id INT IDENTITY(1,1), Value NVARCHAR(MAX))
+AS
+BEGIN
+    DECLARE @start INT = 1, @end INT;
+    WHILE CHARINDEX(@delimiter, @string, @start) > 0
+    BEGIN
+        SET @end = CHARINDEX(@delimiter, @string, @start);
+        INSERT INTO @result(Value) VALUES (SUBSTRING(@string, @start, @end - @start));
+        SET @start = @end + 1;
+    END
+    INSERT INTO @result(Value) VALUES (SUBSTRING(@string, @start, LEN(@string) - @start + 1));
+    RETURN;
+END
+GO
