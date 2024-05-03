@@ -1,0 +1,86 @@
+/* * * * *  
+Esta função identifica similaridades entre dois campos de nomes, pressupondo 
+que o primeiro nome seja sempre idêntico e buscando pelo menos um sobrenome correspondente, 
+excluindo sobrenomes com comprimento menor que o especificado pelo parâmetro 'precision'.
+
+É necessário criar antes a função dbo.SplitString (Código Abaixo)
+
+Para versões mais recentes do SQL Server pode ser utilizad a função STRING_SPLIT ao invez da criar a SplitString.
+
+
+
+* * * * */
+
+
+alter FUNCTION dbo.fnJoinBySimilarity (@name1 NVARCHAR(MAX), @name2 NVARCHAR(MAX), @precision INT)
+RETURNS BIT
+AS
+BEGIN
+    DECLARE @result BIT = 0;
+    DECLARE @first_name1 NVARCHAR(100), @first_name2 NVARCHAR(100);
+
+    -- Separando o primeiro nome
+    SET @name1 = LTRIM(RTRIM(@name1));
+    SET @name2 = LTRIM(RTRIM(@name2));
+    
+    SET @first_name1 = LEFT(@name1, CHARINDEX(' ', @name1 + ' '));
+    SET @first_name2 = LEFT(@name2, CHARINDEX(' ', @name2 + ' '));
+
+    -- Verificando se o primeiro nome é igual
+    IF @first_name1 = @first_name2
+    BEGIN
+        DECLARE @remaining_names1 NVARCHAR(MAX), @remaining_names2 NVARCHAR(MAX);
+        
+        -- Removendo o primeiro nome
+        SET @remaining_names1 = LTRIM(STUFF(@name1, 1, LEN(@first_name1), ''));
+        SET @remaining_names2 = LTRIM(STUFF(@name2, 1, LEN(@first_name2), ''));
+
+        -- Separando sobrenomes
+        DECLARE @surnames1 TABLE (Surname NVARCHAR(100));
+        DECLARE @surnames2 TABLE (Surname NVARCHAR(100));
+
+        -- Utilizando a função SplitString para dividir a string em palavras
+        INSERT INTO @surnames1
+        SELECT Value FROM dbo.SplitString(@remaining_names1, ' ') WHERE LEN(Value) >= @precision;
+        
+        INSERT INTO @surnames2
+        SELECT Value FROM dbo.SplitString(@remaining_names2, ' ') WHERE LEN(Value) >= @precision;
+
+        -- Verificando se pelo menos um sobrenome é igual
+        IF EXISTS (SELECT 1 FROM @surnames1 WHERE Surname IN (SELECT Surname FROM @surnames2))
+        BEGIN
+            SET @result = 1;
+        END
+    END
+
+    RETURN @result;
+END;
+GO
+
+
+/* * * * */
+
+
+CREATE FUNCTION dbo.SplitString
+(
+    @string NVARCHAR(MAX),
+    @delimiter CHAR(1)
+)
+RETURNS @result TABLE (Id INT IDENTITY(1,1), Value NVARCHAR(MAX))
+AS
+BEGIN
+    DECLARE @start INT = 1, @end INT;
+    WHILE CHARINDEX(@delimiter, @string, @start) > 0
+    BEGIN
+        SET @end = CHARINDEX(@delimiter, @string, @start);
+        INSERT INTO @result(Value) VALUES (SUBSTRING(@string, @start, @end - @start));
+        SET @start = @end + 1;
+    END
+    INSERT INTO @result(Value) VALUES (SUBSTRING(@string, @start, LEN(@string) - @start + 1));
+    RETURN;
+END
+GO
+
+
+
+
